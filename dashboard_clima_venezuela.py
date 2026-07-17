@@ -31,7 +31,7 @@ import requests
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ----------------------------------------------------------------------
 # CONFIGURACIÓN
@@ -112,10 +112,18 @@ def obtener_api_key() -> str:
 
 @st.cache_data(ttl=3600, show_spinner="Consultando pronóstico...")  # refresca cada 60 min
 def obtener_pronostico(nombre_zona: str, lat: float, lon: float, api_key: str) -> dict:
-    """Consulta el pronóstico diario de Visual Crossing para una localidad."""
+    """Consulta el pronóstico diario de Visual Crossing para una localidad.
+
+    Se pide un rango de fechas explícito (hoy -> hoy + DIAS_PRONOSTICO-1) en
+    la URL, porque la API no tiene un parámetro "forecastDays": si no se
+    especifican fechas, devuelve su rango por defecto (15 días).
+    """
+    hoy = datetime.now().date()
+    fecha_fin = hoy + timedelta(days=DIAS_PRONOSTICO - 1)
+
     url = (
         f"https://weather.visualcrossing.com/VisualCrossingWebServices/"
-        f"rest/services/timeline/{lat},{lon}"
+        f"rest/services/timeline/{lat},{lon}/{hoy.isoformat()}/{fecha_fin.isoformat()}"
     )
     params = {
         "unitGroup": "metric",
@@ -123,7 +131,6 @@ def obtener_pronostico(nombre_zona: str, lat: float, lon: float, api_key: str) -
         "elements": "datetime,tempmax,tempmin,precip,precipprob,windspeed,windgust,conditions",
         "key": api_key,
         "contentType": "json",
-        "forecastDays": DIAS_PRONOSTICO,
     }
     r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
@@ -220,6 +227,11 @@ with col_izq:
         default=list(ZONAS.keys()),
     )
     st.markdown("---")
+    dias_alerta = st.slider(
+        "Días a incluir en el resumen de alertas",
+        min_value=1, max_value=DIAS_PRONOSTICO, value=3,
+    )
+    st.markdown("---")
     if st.button("🔄 Actualizar datos"):
         st.cache_data.clear()
 
@@ -231,7 +243,7 @@ if not zonas_seleccionadas:
 # RESUMEN DE ALERTAS (todas las zonas, próximos 3 días)
 # ----------------------------------------------------------------------
 
-st.subheader("🚨 Resumen de alertas — próximos 3 días")
+st.subheader(f"🚨 Resumen de alertas — próximos {dias_alerta} días")
 
 resumen_alertas = []
 datos_por_zona = {}
@@ -242,7 +254,7 @@ for nombre in zonas_seleccionadas:
         data = obtener_pronostico(nombre, info["lat"], info["lon"], api_key)
         df = procesar_pronostico(data)
         datos_por_zona[nombre] = df
-        for _, dia in df.head(3).iterrows():
+        for _, dia in df.head(dias_alerta).iterrows():
             for texto, nivel in evaluar_alertas(dia):
                 resumen_alertas.append({
                     "Zona": nombre, "Estado": info["estado"],
