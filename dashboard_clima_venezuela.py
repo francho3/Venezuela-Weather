@@ -9,6 +9,7 @@ Uso:
 Fuente de datos: Open-Meteo (https://open-meteo.com) - API gratuita, sin API key.
 """
 
+import time
 import requests
 import pandas as pd
 import streamlit as st
@@ -47,13 +48,22 @@ UMBRAL_FRIO_C = 15               # temp. mínima -> riesgo nocturno en campament
 # FUNCIONES DE DATOS
 # ----------------------------------------------------------------------
 
-@st.cache_data(ttl=1800)  # refresca cada 30 min
-def obtener_pronostico(lat: float, lon: float) -> dict:
-    """Consulta el pronóstico diario y por hora de Open-Meteo."""
+@st.cache_data(ttl=3600, show_spinner="Consultando pronóstico...")  # refresca cada 60 min
+def obtener_pronosticos_todas_zonas(nombres: tuple) -> dict:
+    """
+    Consulta el pronóstico de TODAS las zonas en una sola llamada a la API
+    (Open-Meteo permite mandar varias coordenadas separadas por comas).
+    Esto evita el error 429 (Too Many Requests) por hacer muchas llamadas
+    seguidas. Incluye reintento automático con espera si el límite se
+    alcanza igualmente (por ejemplo si varias personas usan la app a la vez).
+    """
+    lats = ",".join(str(ZONAS[n]["lat"]) for n in nombres)
+    lons = ",".join(str(ZONAS[n]["lon"]) for n in nombres)
+
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "latitude": lat,
-        "longitude": lon,
+        "latitude": lats,
+        "longitude": lons,
         "daily": [
             "temperature_2m_max",
             "temperature_2m_min",
@@ -63,13 +73,29 @@ def obtener_pronostico(lat: float, lon: float) -> dict:
             "windgusts_10m_max",
             "weathercode",
         ],
-        "hourly": ["temperature_2m", "precipitation", "windspeed_10m"],
         "timezone": "America/Caracas",
         "forecast_days": 7,
     }
-    r = requests.get(url, params=params, timeout=15)
-    r.raise_for_status()
-    return r.json()
+
+    intentos = 3
+    espera = 5  # segundos
+    for intento in range(1, intentos + 1):
+        r = requests.get(url, params=params, timeout=20)
+        if r.status_code == 429:
+            if intento < intentos:
+                time.sleep(espera)
+                espera *= 2  # backoff exponencial
+                continue
+            else:
+                r.raise_for_status()
+        r.raise_for_status()
+        data = r.json()
+        # Con múltiples coordenadas, Open-Meteo devuelve una lista de resultados
+        if isinstance(data, dict):
+            data = [data]
+        return dict(zip(nombres, data))
+
+    return {}
 
 
 def codigo_a_descripcion(codigo: int) -> str:
@@ -156,12 +182,12 @@ with col_logo:
         st.caption("📌 Coloca aquí 'ifrc_climate_centre_logo.png' (ver comentario en el código)")
 
 with col_titulo:
-    st.title("Pronóstico del Tiempo — Zonas de Desastre Sísmico en Venezuela")
+    st.title("🌦️ Pronóstico del Tiempo — Zonas de Desastre Sísmico en Venezuela")
     st.caption(
         "Seguimiento meteorológico para las zonas afectadas por los terremotos del 24 de junio de 2026 "
-        "(La Guaira, Distrito Capital, Miranda, Carabobo y Yaracuy)."
+        "(La Guaira, Distrito Capital, Miranda, Carabobo y Yaracuy). Datos: Open-Meteo."
     )
-    
+st.caption("En colaboración informativa con el enfoque de datos climáticos del IFRC Climate Centre (climatecentre.org).")
 st.info(
     "⚠️ Este dashboard es una herramienta de apoyo informativo y **no sustituye** las alertas "
     "oficiales de Protección Civil / INAMEH. Verifica siempre con fuentes oficiales.",
@@ -194,11 +220,21 @@ st.subheader("🚨 Resumen de alertas — próximos 3 días")
 resumen_alertas = []
 datos_por_zona = {}
 
+try:
+    resultados = obtener_pronosticos_todas_zonas(tuple(zonas_seleccionadas))
+except Exception as e:
+    resultados = {}
+    st.error(
+        f"No se pudo consultar el servicio meteorológico (Open-Meteo): {e}. "
+        "Intenta de nuevo en unos minutos."
+    )
+
 for nombre in zonas_seleccionadas:
     info = ZONAS[nombre]
+    if nombre not in resultados:
+        continue
     try:
-        data = obtener_pronostico(info["lat"], info["lon"])
-        df = procesar_pronostico(data)
+        df = procesar_pronostico(resultados[nombre])
         datos_por_zona[nombre] = df
         for _, dia in df.head(3).iterrows():
             for texto, nivel in evaluar_alertas(dia):
@@ -207,7 +243,7 @@ for nombre in zonas_seleccionadas:
                     "Fecha": dia["fecha"], "Alerta": texto, "Nivel": nivel,
                 })
     except Exception as e:
-        st.error(f"No se pudo obtener el pronóstico para {nombre}: {e}")
+        st.error(f"No se pudo procesar el pronóstico para {nombre}: {e}")
 
 if resumen_alertas:
     df_alertas = pd.DataFrame(resumen_alertas)
@@ -275,8 +311,6 @@ for tab, nombre in zip(tabs, zonas_seleccionadas):
 st.markdown("---")
 st.caption(
     f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')} · "
-    "Datos meteorológicos: Open-Meteo· "
-    "Contexto terremotos de magnitud 7.5 y 7.2 del 24 de junio de 2026."
+    "Datos meteorológicos: Open-Meteo (open-meteo.com) · "
+    "Contexto del desastre: terremotos de magnitud 7.5 y 7.2 del 24 de junio de 2026."
 )
-st.caption("Dashboard elaborado IFRC Climate Centre (climatecentre.org).")
-
