@@ -6,10 +6,27 @@ Uso:
     pip install streamlit requests pandas plotly
     streamlit run dashboard_clima_venezuela.py
 
-Fuente de datos: Open-Meteo (https://open-meteo.com) - API gratuita, sin API key.
+Fuente de datos: Visual Crossing Weather API (https://www.visualcrossing.com)
+Se usa esta API (en vez de Open-Meteo) porque su límite gratuito es POR
+API KEY personal (1,000 registros/día), no por dirección IP. Esto evita
+el error 429 "Too Many Requests" que ocurre en Streamlit Cloud, donde
+muchas apps de distintos usuarios comparten la misma IP de salida.
+
+CÓMO OBTENER TU API KEY GRATIS (2 minutos, no pide tarjeta):
+    1. Ve a https://www.visualcrossing.com/sign-up
+    2. Crea una cuenta gratuita con tu correo.
+    3. Copia tu API key desde el panel ("Account" -> "API Key").
+    4. Configúrala de una de estas formas:
+       a) Local: crea un archivo ".streamlit/secrets.toml" junto a este
+          script con el contenido:
+              VISUALCROSSING_API_KEY = "tu_key_aqui"
+       b) Streamlit Cloud: en "Manage app" -> "Settings" -> "Secrets",
+          pega la misma línea de arriba.
+       c) Si no configuras nada, el dashboard te pedirá que la escribas
+          en un campo de texto al abrir la app (solo para pruebas rápidas).
 """
 
-import time
+import os
 import requests
 import pandas as pd
 import streamlit as st
@@ -44,74 +61,73 @@ UMBRAL_VIENTO_FUERTE_KMH = 40    # ráfagas -> riesgo para carpas/campamentos
 UMBRAL_CALOR_C = 33              # temp. máxima -> riesgo para personas a la intemperie
 UMBRAL_FRIO_C = 15               # temp. mínima -> riesgo nocturno en campamentos
 
+DIAS_PRONOSTICO = 7
+
+# Traducción aproximada de condiciones más comunes de Visual Crossing
+TRADUCCIONES_CONDICION = {
+    "Clear": "Despejado",
+    "Partially cloudy": "Parcialmente nublado",
+    "Cloudy": "Nublado",
+    "Overcast": "Cielo cubierto",
+    "Rain": "Lluvia",
+    "Rain, Partially cloudy": "Lluvia, parcialmente nublado",
+    "Rain, Overcast": "Lluvia, cielo cubierto",
+    "Snow": "Nieve",
+    "Thunderstorm": "Tormenta eléctrica",
+    "Fog": "Neblina",
+}
+
+
+def traducir_condicion(texto: str) -> str:
+    return TRADUCCIONES_CONDICION.get(texto, texto)
+
+
+# ----------------------------------------------------------------------
+# API KEY
+# ----------------------------------------------------------------------
+
+def obtener_api_key() -> str:
+    """Busca la API key en secrets, variable de entorno, o la pide al usuario."""
+    try:
+        if "VISUALCROSSING_API_KEY" in st.secrets:
+            return st.secrets["VISUALCROSSING_API_KEY"]
+    except Exception:
+        pass  # no hay archivo secrets.toml configurado, seguimos buscando
+
+    env_key = os.environ.get("VISUALCROSSING_API_KEY")
+    if env_key:
+        return env_key
+
+    st.warning(
+        "No se encontró una API key de Visual Crossing configurada. "
+        "Puedes obtener una gratis en https://www.visualcrossing.com/sign-up "
+        "y pegarla abajo (o configurarla como 'secret' para no repetir este paso)."
+    )
+    return st.text_input("API key de Visual Crossing", type="password")
+
+
 # ----------------------------------------------------------------------
 # FUNCIONES DE DATOS
 # ----------------------------------------------------------------------
 
 @st.cache_data(ttl=3600, show_spinner="Consultando pronóstico...")  # refresca cada 60 min
-def obtener_pronosticos_todas_zonas(nombres: tuple) -> dict:
-    """
-    Consulta el pronóstico de TODAS las zonas en una sola llamada a la API
-    (Open-Meteo permite mandar varias coordenadas separadas por comas).
-    Esto evita el error 429 (Too Many Requests) por hacer muchas llamadas
-    seguidas. Incluye reintento automático con espera si el límite se
-    alcanza igualmente (por ejemplo si varias personas usan la app a la vez).
-    """
-    lats = ",".join(str(ZONAS[n]["lat"]) for n in nombres)
-    lons = ",".join(str(ZONAS[n]["lon"]) for n in nombres)
-
-    url = "https://api.open-meteo.com/v1/forecast"
+def obtener_pronostico(nombre_zona: str, lat: float, lon: float, api_key: str) -> dict:
+    """Consulta el pronóstico diario de Visual Crossing para una localidad."""
+    url = (
+        f"https://weather.visualcrossing.com/VisualCrossingWebServices/"
+        f"rest/services/timeline/{lat},{lon}"
+    )
     params = {
-        "latitude": lats,
-        "longitude": lons,
-        "daily": [
-            "temperature_2m_max",
-            "temperature_2m_min",
-            "precipitation_sum",
-            "precipitation_probability_max",
-            "windspeed_10m_max",
-            "windgusts_10m_max",
-            "weathercode",
-        ],
-        "timezone": "America/Caracas",
-        "forecast_days": 7,
+        "unitGroup": "metric",
+        "include": "days",
+        "elements": "datetime,tempmax,tempmin,precip,precipprob,windspeed,windgust,conditions",
+        "key": api_key,
+        "contentType": "json",
+        "forecastDays": DIAS_PRONOSTICO,
     }
-
-    intentos = 3
-    espera = 5  # segundos
-    for intento in range(1, intentos + 1):
-        r = requests.get(url, params=params, timeout=20)
-        if r.status_code == 429:
-            if intento < intentos:
-                time.sleep(espera)
-                espera *= 2  # backoff exponencial
-                continue
-            else:
-                r.raise_for_status()
-        r.raise_for_status()
-        data = r.json()
-        # Con múltiples coordenadas, Open-Meteo devuelve una lista de resultados
-        if isinstance(data, dict):
-            data = [data]
-        return dict(zip(nombres, data))
-
-    return {}
-
-
-def codigo_a_descripcion(codigo: int) -> str:
-    """Traduce el weathercode de Open-Meteo (estándar WMO) a texto en español."""
-    mapa = {
-        0: "Despejado", 1: "Mayormente despejado", 2: "Parcialmente nublado",
-        3: "Nublado", 45: "Neblina", 48: "Neblina con escarcha",
-        51: "Llovizna leve", 53: "Llovizna moderada", 55: "Llovizna intensa",
-        61: "Lluvia leve", 63: "Lluvia moderada", 65: "Lluvia fuerte",
-        66: "Lluvia helada leve", 67: "Lluvia helada fuerte",
-        71: "Nieve leve", 73: "Nieve moderada", 75: "Nieve fuerte",
-        80: "Chubascos leves", 81: "Chubascos moderados", 82: "Chubascos violentos",
-        95: "Tormenta eléctrica", 96: "Tormenta con granizo leve",
-        99: "Tormenta con granizo fuerte",
-    }
-    return mapa.get(codigo, "Desconocido")
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()
 
 
 def evaluar_alertas(dia: dict) -> list:
@@ -140,27 +156,23 @@ def evaluar_alertas(dia: dict) -> list:
 
 
 def procesar_pronostico(data: dict) -> pd.DataFrame:
-    daily = data["daily"]
     filas = []
-    for i, fecha in enumerate(daily["time"]):
+    for dia in data.get("days", []):
+        rafagas = dia.get("windgust")
+        if rafagas is None:
+            rafagas = dia.get("windspeed", 0)
         filas.append({
-            "fecha": fecha,
-            "temp_max": daily["temperature_2m_max"][i],
-            "temp_min": daily["temperature_2m_min"][i],
-            "precipitacion_mm": daily["precipitation_sum"][i],
-            "prob_precipitacion": daily["precipitation_probability_max"][i],
-            "viento_max_kmh": daily["windspeed_10m_max"][i],
-            "rafagas_kmh": daily["windgusts_10m_max"][i],
-            "condicion": codigo_a_descripcion(daily["weathercode"][i]),
+            "fecha": dia["datetime"],
+            "temp_max": dia["tempmax"],
+            "temp_min": dia["tempmin"],
+            "precipitacion_mm": dia.get("precip") or 0,
+            "prob_precipitacion": dia.get("precipprob") or 0,
+            "viento_max_kmh": dia.get("windspeed", 0),
+            "rafagas_kmh": rafagas,
+            "condicion": traducir_condicion(dia.get("conditions", "")),
         })
     return pd.DataFrame(filas)
 
-
-# ----------------------------------------------------------------------
-# INTERFAZ
-# ----------------------------------------------------------------------
-
-import os
 
 # ----------------------------------------------------------------------
 # LOGO INSTITUCIONAL (IFRC Climate Centre)
@@ -185,7 +197,7 @@ with col_titulo:
     st.title("🌦️ Pronóstico del Tiempo — Zonas de Desastre Sísmico en Venezuela")
     st.caption(
         "Seguimiento meteorológico para las zonas afectadas por los terremotos del 24 de junio de 2026 "
-        "(La Guaira, Distrito Capital, Miranda, Carabobo y Yaracuy). Datos: Open-Meteo."
+        "(La Guaira, Distrito Capital, Miranda, Carabobo y Yaracuy). Datos: Visual Crossing Weather."
     )
 st.caption("En colaboración informativa con el enfoque de datos climáticos del IFRC Climate Centre (climatecentre.org).")
 st.info(
@@ -193,6 +205,10 @@ st.info(
     "oficiales de Protección Civil / INAMEH. Verifica siempre con fuentes oficiales.",
     icon="⚠️",
 )
+
+api_key = obtener_api_key()
+if not api_key:
+    st.stop()
 
 col_izq, col_der = st.columns([1, 3])
 
@@ -220,21 +236,11 @@ st.subheader("🚨 Resumen de alertas — próximos 3 días")
 resumen_alertas = []
 datos_por_zona = {}
 
-try:
-    resultados = obtener_pronosticos_todas_zonas(tuple(zonas_seleccionadas))
-except Exception as e:
-    resultados = {}
-    st.error(
-        f"No se pudo consultar el servicio meteorológico (Open-Meteo): {e}. "
-        "Intenta de nuevo en unos minutos."
-    )
-
 for nombre in zonas_seleccionadas:
     info = ZONAS[nombre]
-    if nombre not in resultados:
-        continue
     try:
-        df = procesar_pronostico(resultados[nombre])
+        data = obtener_pronostico(nombre, info["lat"], info["lon"], api_key)
+        df = procesar_pronostico(data)
         datos_por_zona[nombre] = df
         for _, dia in df.head(3).iterrows():
             for texto, nivel in evaluar_alertas(dia):
@@ -242,8 +248,13 @@ for nombre in zonas_seleccionadas:
                     "Zona": nombre, "Estado": info["estado"],
                     "Fecha": dia["fecha"], "Alerta": texto, "Nivel": nivel,
                 })
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 401:
+            st.error(f"La API key no es válida para {nombre}. Verifica que la copiaste bien.")
+        else:
+            st.error(f"No se pudo obtener el pronóstico para {nombre}: {e}")
     except Exception as e:
-        st.error(f"No se pudo procesar el pronóstico para {nombre}: {e}")
+        st.error(f"No se pudo obtener el pronóstico para {nombre}: {e}")
 
 if resumen_alertas:
     df_alertas = pd.DataFrame(resumen_alertas)
@@ -302,7 +313,7 @@ for tab, nombre in zip(tabs, zonas_seleccionadas):
         g1.plotly_chart(fig_temp, use_container_width=True)
         g2.plotly_chart(fig_lluvia, use_container_width=True)
 
-        st.markdown("**Tabla de pronóstico (7 días)**")
+        st.markdown(f"**Tabla de pronóstico ({DIAS_PRONOSTICO} días)**")
         df_mostrar = df.copy()
         df_mostrar.columns = ["Fecha", "T. Máx (°C)", "T. Mín (°C)", "Precip. (mm)",
                                "Prob. Precip. (%)", "Viento máx (km/h)", "Ráfagas (km/h)", "Condición"]
@@ -311,6 +322,6 @@ for tab, nombre in zip(tabs, zonas_seleccionadas):
 st.markdown("---")
 st.caption(
     f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')} · "
-    "Datos meteorológicos: Open-Meteo (open-meteo.com) · "
+    "Datos meteorológicos: Visual Crossing Weather (visualcrossing.com) · "
     "Contexto del desastre: terremotos de magnitud 7.5 y 7.2 del 24 de junio de 2026."
 )
