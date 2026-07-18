@@ -204,7 +204,7 @@ with col_titulo:
     st.title("🌦️ Pronóstico del Tiempo — Zonas de Desastre Sísmico en Venezuela")
     st.caption(
         "Seguimiento meteorológico para las zonas afectadas por los terremotos del 24 de junio de 2026 "
-        "(La Guaira, Distrito Capital, Miranda, Carabobo y Yaracuy). Datos: Visual Crossing Weather."
+        "(La Guaira, Distrito Capital, Miranda, Carabobo y Yaracuy)."
     )
     
 st.info(
@@ -334,7 +334,7 @@ for tab, nombre in zip(tabs, zonas_seleccionadas):
 st.markdown("---")
 st.caption(
     f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')} · "
-    "Datos meteorológicos: (Visual Crossing Weather) ·"
-    "Contexto del desastre: terremotos de magnitud 7.5 y 7.2 del 24 de junio de 2026."
+    "Datos meteorológicos: (Visual Crossing Weather) "
+   
 )
 st.caption("Dashboard elaborado IFRC Climate Centre (www.climatecentre.org).")
