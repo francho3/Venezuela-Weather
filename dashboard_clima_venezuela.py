@@ -334,7 +334,7 @@ for tab, nombre in zip(tabs, zonas_seleccionadas):
 st.markdown("---")
 st.caption(
     f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')} · "
-    "Datos meteorológicos: Visual Crossing Weather (visualcrossing.com) · "
+    "Datos meteorológicos: Visual Crossing Weather"
     "Contexto del desastre: terremotos de magnitud 7.5 y 7.2 del 24 de junio de 2026."
 )
 st.caption("Dashboard elaborado IFRC Climate Centre (www.climatecentre.org).")
