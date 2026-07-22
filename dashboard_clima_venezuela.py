@@ -215,9 +215,8 @@ st.info(
 
 with st.expander("🛰️ ¿Qué modelo meteorológico se usa?"):
     st.markdown(
-        "Los datos provienen de **Visual Crossing**, que no usa un único modelo sino un "
         "**ensamble** que combina y pondera varios modelos numéricos reconocidos, incluyendo:\n"
-        "- **ECMWF** (IFS y ENS) — modelo europeo, uno de los más precisos a nivel global\n"
+        "- **ECMWF** (IFS y ENS) \n"
         "- **GFS** (NOAA, EE.UU.)\n"
         "- **ICON** (DWD, Alemania)\n"
     )
