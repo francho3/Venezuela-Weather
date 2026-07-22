@@ -220,10 +220,6 @@ with st.expander("🛰️ ¿Qué modelo meteorológico se usa?"):
         "- **ECMWF** (IFS y ENS) — modelo europeo, uno de los más precisos a nivel global\n"
         "- **GFS** (NOAA, EE.UU.)\n"
         "- **ICON** (DWD, Alemania)\n"
-        "- Otros modelos regionales, más observaciones en tiempo real\n\n"
-        "Esto suele dar mejor precisión que depender de un solo modelo, pero significa que "
-        "**no es un pronóstico puramente ECMWF**. Más detalles: "
-        "[documentación de Visual Crossing](https://www.visualcrossing.com/resources/documentation/weather-data/how-do-we-create-our-weather-forecast/)."
     )
 
 api_key = obtener_api_key()
