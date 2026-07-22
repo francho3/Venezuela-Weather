@@ -59,7 +59,7 @@ UMBRAL_LLUVIA_FUERTE_MM = 20     # mm/día -> riesgo de deslizamientos en escomb
 UMBRAL_LLUVIA_INTENSA_MM = 40    # mm/día -> riesgo alto
 UMBRAL_VIENTO_FUERTE_KMH = 40    # ráfagas -> riesgo para carpas/campamentos
 UMBRAL_CALOR_C = 33              # temp. máxima -> riesgo para personas a la intemperie
-UMBRAL_FRIO_C = 15               # temp. mínima -> riesgo nocturno en campamentos
+UMBRAL_FRIO_C = 11               # temp. mínima -> riesgo nocturno en campamentos
 
 DIAS_PRONOSTICO = 7
 
