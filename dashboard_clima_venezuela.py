@@ -213,6 +213,19 @@ st.info(
     icon="⚠️",
 )
 
+with st.expander("🛰️ ¿Qué modelo meteorológico se usa?"):
+    st.markdown(
+        "Los datos provienen de **Visual Crossing**, que no usa un único modelo sino un "
+        "**ensamble** que combina y pondera varios modelos numéricos reconocidos, incluyendo:\n"
+        "- **ECMWF** (IFS y ENS) — modelo europeo, uno de los más precisos a nivel global\n"
+        "- **GFS** (NOAA, EE.UU.)\n"
+        "- **ICON** (DWD, Alemania)\n"
+        "- Otros modelos regionales, más observaciones en tiempo real\n\n"
+        "Esto suele dar mejor precisión que depender de un solo modelo, pero significa que "
+        "**no es un pronóstico puramente ECMWF**. Más detalles: "
+        "[documentación de Visual Crossing](https://www.visualcrossing.com/resources/documentation/weather-data/how-do-we-create-our-weather-forecast/)."
+    )
+
 api_key = obtener_api_key()
 if not api_key:
     st.stop()
@@ -245,6 +258,22 @@ if not zonas_seleccionadas:
 
 st.subheader(f"🚨 Resumen de alertas — próximos {dias_alerta} días")
 
+with st.expander("ℹ️ Ver umbrales usados para generar las alertas"):
+    df_umbrales = pd.DataFrame([
+        {"Tipo": "🔴 Lluvia intensa", "Umbral": f"≥ {UMBRAL_LLUVIA_INTENSA_MM} mm/día",
+         "Riesgo": "Alto riesgo de deslizamientos en zonas con escombros/laderas inestables"},
+        {"Tipo": "🟠 Lluvia fuerte", "Umbral": f"≥ {UMBRAL_LLUVIA_FUERTE_MM} mm/día",
+         "Riesgo": "Posible deslizamiento y anegación en campamentos"},
+        {"Tipo": "🟠 Viento fuerte", "Umbral": f"≥ {UMBRAL_VIENTO_FUERTE_KMH} km/h (ráfagas)",
+         "Riesgo": "Riesgo para carpas y estructuras temporales"},
+        {"Tipo": "🟡 Calor elevado", "Umbral": f"≥ {UMBRAL_CALOR_C} °C (máxima)",
+         "Riesgo": "Riesgo de golpe de calor a la intemperie"},
+        {"Tipo": "🔵 Frío nocturno", "Umbral": f"≤ {UMBRAL_FRIO_C} °C (mínima)",
+         "Riesgo": "Riesgo de hipotermia en campamentos"},
+    ])
+    st.dataframe(df_umbrales, use_container_width=True, hide_index=True)
+    st.caption("Puedes ajustar estos valores editando las constantes UMBRAL_... al inicio del código.")
+
 resumen_alertas = []
 datos_por_zona = {}
 
@@ -275,7 +304,7 @@ if resumen_alertas:
     df_alertas = df_alertas.sort_values(["orden", "Fecha"]).drop(columns="orden")
     st.dataframe(df_alertas[["Zona", "Estado", "Fecha", "Alerta"]], use_container_width=True, hide_index=True)
 else:
-    st.success("No se detectan condiciones extremas en los próximos 3 días para las zonas seleccionadas.")
+    st.success(f"No se detectan condiciones extremas en los próximos {dias_alerta} días para las zonas seleccionadas.")
 
 st.markdown("---")
 
