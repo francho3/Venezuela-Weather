@@ -215,7 +215,7 @@ st.info(
 
 with st.expander("🛰️ ¿Qué modelo meteorológico se usa?"):
     st.markdown(
-        "**ensamble** que combina y pondera varios modelos numéricos reconocidos, incluyendo:\n"
+        "Los datos provienen de un **ensamble** que combina y pondera varios modelos numéricos, incluyendo:\n"
         "- **ECMWF** (IFS y ENS) \n"
         "- **GFS** (NOAA, EE.UU.)\n"
         "- **ICON** (DWD, Alemania)\n"
@@ -331,6 +331,10 @@ for tab, nombre in zip(tabs, zonas_seleccionadas):
                                        mode="lines+markers", line=dict(color="firebrick")))
         fig_temp.add_trace(go.Scatter(x=df["fecha"], y=df["temp_min"], name="Mínima",
                                        mode="lines+markers", line=dict(color="royalblue")))
+        fig_temp.add_hline(y=UMBRAL_CALOR_C, line_dash="dot", line_color="orange",
+                            annotation_text="Umbral calor elevado", annotation_position="top left")
+        fig_temp.add_hline(y=UMBRAL_FRIO_C, line_dash="dot", line_color="dodgerblue",
+                            annotation_text="Umbral frío nocturno", annotation_position="bottom left")
         fig_temp.update_layout(title=f"Temperatura — {nombre}", yaxis_title="°C", height=320,
                                 margin=dict(t=40, b=20))
 
