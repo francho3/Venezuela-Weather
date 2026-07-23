@@ -267,7 +267,7 @@ with st.expander("ℹ️ Ver umbrales usados para generar las alertas"):
          "Riesgo": "Riesgo de hipotermia en campamentos"},
     ])
     st.dataframe(df_umbrales, use_container_width=True, hide_index=True)
-    st.caption("Puedes ajustar estos valores editando las constantes UMBRAL_... al inicio del código.")
+#    st.caption("Puedes ajustar estos valores editando las constantes UMBRAL_... al inicio del código.")
 
 resumen_alertas = []
 datos_por_zona = {}
